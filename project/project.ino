@@ -25,6 +25,10 @@
 #include <Arduino.h>
 #include <IRremote.hpp> // include the library
 
+#define trigPin 2  
+#define echoPin 4
+
+
 #define leftSideEN 10
 #define leftSideFWD 9
 #define leftSideBWD 8
@@ -34,6 +38,7 @@
 #define IR_RECEIVE_PIN 3
 #define LED 13
 #define SPEED_FACT (255/100)
+#define PROXIMITY_LIMIT 20
 
 typedef enum : uint8_t{
   IRCMD_NONE,
@@ -104,6 +109,28 @@ void leftWheels(DRIVE_DIRECTION_t cmd, uint8_t speed){
   }  
 }
 
+
+void driveFWD(uint8_t speed){
+  rightWheels(DRV_FWD, speed);
+  leftWheels(DRV_FWD, speed);
+}
+void driveBWD(uint8_t speed){
+  rightWheels(DRV_BWD, speed);
+  leftWheels(DRV_BWD, speed);
+}
+void driveLFT(uint8_t speed){
+  rightWheels(DRV_BWD, speed);
+  leftWheels(DRV_FWD, speed);
+}
+void driveRGT(uint8_t speed){
+  rightWheels(DRV_FWD, speed);
+  leftWheels(DRV_BWD, speed);
+}
+void driveZero(){
+  rightWheels(DRV_BREAK, 0);
+  leftWheels(DRV_BREAK, 0);
+}
+
 uint8_t convertSpeed(uint8_t speed){
   float v = (float)SPEED_FACT * (float)speed;
   Serial.println(v);
@@ -113,6 +140,10 @@ uint8_t convertSpeed(uint8_t speed){
 // the setup function runs once when you press reset or power the board
 void setup() {
   Serial.begin(9600);
+
+  pinMode(trigPin, OUTPUT);  
+	pinMode(echoPin, INPUT);  
+
 
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(LED, OUTPUT);
@@ -164,44 +195,112 @@ IRCommand_t getIRCommand(void){
 typedef enum : uint8_t {
   DS_IDLE,
   DS_FWD,
-  DS_BWD
+  DS_BWD,
+  DS_LFT,
+  DS_RGT,
+  DS_OBSTACLE_DETECTED,
+  DS_OBSTRACLE_RETREAT
+  
 } DRIVE_STATE_t;
+
+
+float getDistance(){
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+
+  float duration;
+  float distance;
+  duration = pulseIn(echoPin, HIGH);
+  distance = (duration*.0343)/2;
+  //Serial.print("Distance: ");
+  //Serial.println(distance);
+  return distance;
+}
 
 
 // the loop function runs over and over again forever
 static DRIVE_STATE_t driveState = DS_IDLE;
-static int controlSpeed = 0;
 uint8_t rawSpeed = 155;
 uint8_t speed = 255;
-void loop() {
-  IRCommand_t irCMD = getIRCommand();
-  
+
+void processDriveStateTransition(IRCommand_t irCMD, float distSensorValue){
   if(irCMD != IRCMD_NONE){
-    Serial.print(irCMD);
-    Serial.print(" ");
-    //speed = convertSpeed(rawSpeed);
     if(irCMD == IRCMD_UP){
-      rightWheels(DRV_FWD, speed);
-      leftWheels(DRV_FWD, speed);
-    }else if(irCMD == IRCMD_DOWN){
-      rightWheels(DRV_BWD, speed);
-      leftWheels(DRV_BWD, speed);
-    }else if(irCMD == IRCMD_LEFT){
-      rightWheels(DRV_BWD, speed);
-      leftWheels(DRV_FWD, speed);
-    }else if(irCMD == IRCMD_RIGHT){
-      rightWheels(DRV_FWD, speed);
-      leftWheels(DRV_BWD, speed);
-    }else if(irCMD == IRCMD_OK){
-      rightWheels(DRV_FWD, 0);
-      leftWheels(DRV_BWD, 0);
-    }
-    Serial.print(speed);
-    Serial.println();
+        driveState = DS_FWD;
+      }else if(irCMD == IRCMD_DOWN){
+        driveState = DS_BWD;
+      }else if(irCMD == IRCMD_LEFT){
+        driveState = DS_LFT;
+      }else if(irCMD == IRCMD_RIGHT){
+        driveState = DS_RGT;
+      }else if(irCMD == IRCMD_OK){
+        driveState = DS_IDLE;
+      }
   }
+  if(distSensorValue <= PROXIMITY_LIMIT){
+    driveState = DS_OBSTACLE_DETECTED;
+  }
+
+}
+
+void processSpeed(float distSensorValue, IRCommand_t irCMD){
+   
+  switch(driveState){
+      case(DS_IDLE):
+        driveZero();
+        processDriveStateTransition(irCMD, distSensorValue);
+        break;
+      case(DS_FWD):
+        driveFWD(speed);
+        processDriveStateTransition(irCMD, distSensorValue);
+        break;
+      case(DS_BWD):
+        driveBWD(speed);
+        processDriveStateTransition(irCMD, distSensorValue);
+        break;
+      case(DS_LFT):
+        driveLFT(speed);
+        processDriveStateTransition(irCMD, distSensorValue);
+        break;
+      case(DS_RGT):
+        driveRGT(speed);
+        processDriveStateTransition(irCMD, distSensorValue);
+        break;
+      case(DS_OBSTRACLE_RETREAT):
+        
+        if(distSensorValue >= PROXIMITY_LIMIT){
+          driveState = DS_IDLE;
+        }else{
+          driveBWD(150);
+        }
+        break;
+      case(DS_OBSTACLE_DETECTED):
+        if(distSensorValue >= PROXIMITY_LIMIT){
+          driveState = DS_IDLE;
+        }else{
+          if(irCMD == IRCMD_DOWN){
+            driveState = DS_OBSTRACLE_RETREAT;
+          }
+          driveZero();
+        }
+        
+        
+        break;
+      default:
+        driveZero();
+        processDriveStateTransition(irCMD, distSensorValue);
+      break;
+  }
+}
+
+void loop() {
+  float dist = getDistance();
+  IRCommand_t irCMD = getIRCommand();
+  processSpeed(dist, irCMD);
  
- 
-  
   delay(100);
 
 }
