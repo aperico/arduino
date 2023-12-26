@@ -1,54 +1,26 @@
-//#include <IRremote.h> // include the library
-//#define DECODE_DENON        // Includes Sharp
-//#define DECODE_JVC
-//#define DECODE_KASEIKYO
-//#define DECODE_PANASONIC    // alias for DECODE_KASEIKYO
-//#define DECODE_LG
-#define DECODE_NEC          // Includes Apple and Onkyo
-//#define DECODE_SAMSUNG
-//#define DECODE_SONY
-//#define DECODE_RC5
-//#define DECODE_RC6
-//#define DECODE_BOSEWAVE
-//#define DECODE_LEGO_PF
-//#define DECODE_MAGIQUEST
-//#define DECODE_WHYNTER
-//#define DECODE_FAST
-//#define DECODE_DISTANCE_WIDTH // Universal decoder for pulse distance width protocols
-//#define DECODE_HASH         // special decoder for all protocols
-//#define DECODE_BEO          // This protocol must always be enabled manually, i.e. it is NOT enabled if no protocol is defined. It prevents decoding of SONY!
+#include <SPI.h>
+#include <nRF24L01.h>
+#include <RF24.h>
 
-#define DEBUG               // Activate this for lots of lovely debug output from the decoders.
-
-//#define RAW_BUFFER_LENGTH  180  // Default is 112 if DECODE_MAGIQUEST is enabled, otherwise 100.
-
-#include <Arduino.h>
-#include <IRremote.hpp> // include the library
-
-#define trigPin 2  
-#define echoPin 4
+#define CE_PIN   9
+#define CSN_PIN 10
+#define NEUTRAL_FACTOR 50
+#define X_MID_POINT 126
+#define Y_MID_POINT 121
 
 
-#define leftSideEN 10
-#define leftSideFWD 9
-#define leftSideBWD 8
-#define rightSideEN 5
-#define rightSideFWD 7
-#define rightSideBWD 6
-#define IR_RECEIVE_PIN 3
-#define LED 13
+#define trigPin A1 //roxo
+#define echoPin A0 // azul
+
+#define leftSideEN 5 //PWM ENB Yellow
+#define leftSideFWD 7 // green // IN 4
+#define leftSideBWD 8 // blue // in3
+
+#define rightSideEN 6 //PWM ENA // GREEN
+#define rightSideFWD 4 // pink //IN 2
+#define rightSideBWD 2 // Gray // IN 1
 #define SPEED_FACT (255/100)
 #define PROXIMITY_LIMIT 20
-
-typedef enum : uint8_t{
-  IRCMD_NONE,
-  IRCMD_UP,
-  IRCMD_DOWN,
-  IRCMD_RIGHT,
-  IRCMD_LEFT,
-  IRCMD_OK,
-  IRCMD_NOT_SUPPORTED
-} IRCommand_t;
 
 typedef enum : uint8_t {
   DRV_COAST,
@@ -57,17 +29,113 @@ typedef enum : uint8_t {
   DRV_BREAK
 } DRIVE_DIRECTION_t;
 
+float getDistance(){
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+
+  float duration;
+  float distance;
+  duration = pulseIn(echoPin, HIGH);
+  distance = (duration*.0343)/2;
+  //Serial.print("Distance: ");
+  //Serial.println(distance);
+  return distance;
+}
+
+
+void leftWheels(DRIVE_DIRECTION_t cmd, uint8_t speed);
+
+
+
+const uint64_t pipe = 0xE8E8F0F0E1LL;
+
+RF24 radio(CE_PIN, CSN_PIN); 
+
+int data[9]; 
+
+void initMotors(){
+  
+  pinMode(leftSideEN, OUTPUT); // ENA
+  pinMode(leftSideFWD, OUTPUT);
+  pinMode(leftSideBWD, OUTPUT);
+
+  pinMode(rightSideEN, OUTPUT); 
+  pinMode(rightSideFWD, OUTPUT);
+  pinMode(rightSideEN, OUTPUT); // ENB
+}
+
+void initRadio(){
+  radio.begin();
+  radio.openReadingPipe(0,pipe);
+
+  //radio.setAutoAck(false); //(true|false) 
+  radio.setDataRate(RF24_250KBPS); //(RF24_250KBPS|RF24_1MBPS|RF24_2MBPS) 
+  radio.setPALevel(RF24_PA_HIGH);
+  radio.startListening();
+  
+  delay(500);
+  if(radio.isChipConnected()){
+    Serial.println("CHIP CONNECTED");
+  }else{
+    Serial.println("CHIP NOT CONNECTED");
+  }
+}
+
+void setup(){
+  Serial.begin(9600);
+  pinMode(trigPin, OUTPUT);  
+	pinMode(echoPin, INPUT);  
+
+  
+  initRadio();
+  initMotors();
+}
+
+void processRadio(){
+  if ( radio.available() ) //Eğer sinyal algılarsan...
+  {
+    radio.read( data, sizeof(data) );       
+    /*Serial.print(data[0]);
+    Serial.print(" ");
+    Serial.print(data[1]);
+    Serial.print(" ");
+    Serial.print(data[2]);
+    Serial.print(" ");
+    Serial.print(data[3]);
+    Serial.print(" ");
+    Serial.print(data[4]);
+    Serial.print(" ");
+    Serial.print(data[5]);
+    Serial.print(" ");
+    Serial.print(data[6]);
+    Serial.print(" ");
+    Serial.print(data[7]);
+    Serial.print(" ");
+    Serial.print(data[8]);*/
+
+    hareket(data[0],data[1],data[2],data[3],data[4],data[5],data[6],data[7],data[8]);
+    //Serial.print("\n");
+  }
+}
+
+static int x_hiz=0;
+static int y_hiz=0;
+
+
 void rightWheels(DRIVE_DIRECTION_t cmd, uint8_t speed){
   switch(cmd){
     case(DRV_FWD):
       digitalWrite(rightSideFWD, HIGH);
-      analogWrite(rightSideEN, speed);
       digitalWrite(rightSideBWD, LOW);  
+      analogWrite(rightSideEN, speed);
     break;
     case(DRV_BWD):
       digitalWrite(rightSideFWD, LOW);
-      analogWrite(rightSideEN, speed);
       digitalWrite(rightSideBWD, HIGH);  
+      analogWrite(rightSideEN, speed);
     break;
     case(DRV_BREAK):
       digitalWrite(rightSideEN, LOW);
@@ -86,8 +154,8 @@ void rightWheels(DRIVE_DIRECTION_t cmd, uint8_t speed){
 void leftWheels(DRIVE_DIRECTION_t cmd, uint8_t speed){
   switch(cmd){
     case(DRV_FWD):
-      digitalWrite(leftSideBWD, LOW);
       digitalWrite(leftSideFWD, HIGH);
+      digitalWrite(leftSideBWD, LOW);
       analogWrite(leftSideEN, speed);
     break;
     case(DRV_BWD):
@@ -131,26 +199,178 @@ void driveZero(){
   leftWheels(DRV_BREAK, 0);
 }
 
-uint8_t convertSpeed(uint8_t speed){
-  float v = (float)SPEED_FACT * (float)speed;
-  Serial.println(v);
-  return (uint8_t)v;
+void controlSpeed(float distance){
+  if(distance < 20){
+    if(y_hiz <  (Y_MID_POINT-NEUTRAL_FACTOR)){
+      rightWheels(DRV_BWD, 255);
+      leftWheels(DRV_BWD, 255);
+    }else{
+      rightWheels(DRV_BREAK, 0);
+      leftWheels(DRV_BREAK, 0);
+    }
+  }else{
+    // speed
+    if(y_hiz > (Y_MID_POINT+NEUTRAL_FACTOR)){
+      rightWheels(DRV_FWD, 255);
+      leftWheels(DRV_FWD, 255);
+    }else if(y_hiz <  (Y_MID_POINT-NEUTRAL_FACTOR)){
+      rightWheels(DRV_BWD, 255);
+      leftWheels(DRV_BWD, 255);
+    }else{
+      rightWheels(DRV_BREAK, 0);
+      leftWheels(DRV_BREAK, 0);
+    }
+  }
+  
 }
+
+void processMotors(float distance){
+  
+  // direction
+  if(x_hiz > (X_MID_POINT+NEUTRAL_FACTOR)){
+    rightWheels(DRV_FWD, 255);
+    leftWheels(DRV_BWD, 255);
+  }else if(x_hiz < (X_MID_POINT-NEUTRAL_FACTOR)){
+    rightWheels(DRV_BWD, 255);
+    leftWheels(DRV_FWD, 255);
+  }else{
+    //rightWheels(DRV_BREAK, 0);
+    //leftWheels(DRV_BREAK, 0);
+    controlSpeed(distance);
+  }
+
+
+
+/*
+  */
+}
+
+void loop() {
+  float dist = getDistance();
+  Serial.println(dist);
+  processRadio();
+  processMotors(dist);
+  delay(50);
+}
+
+void hareket(int x_axis, int y_axis, int button1, int button2, int button3, int button4, int button5, int button6, int button7) {
+  x_hiz= map(x_axis,0,1023,0,255);
+  //Serial.print(" x=");
+  //Serial.print(x_hiz);
+  
+  y_hiz= map(y_axis,0,1023,0,255);
+  //Serial.print(" y=");
+  //Serial.print(y_hiz);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+/*
+
+
+// SimpleRx - the slave or the receiver
+
+#include <SPI.h>
+#include <nRF24L01.h>
+#include <RF24.h>
+
+#define CE_PIN   9
+#define CSN_PIN 10
+
+RF24 radio(CE_PIN, CSN_PIN);
+const byte address[6] = "00001";
+
+char text[13] = "AAAAAAAAAAAA\0";
+
+void setup() {
+  
+  pinMode(CE_PIN, OUTPUT);
+  pinMode(CSN_PIN, OUTPUT);
+  
+  Serial.begin(9600);
+  radio.begin();
+  radio.openReadingPipe(0, address);
+  //radio.setAutoAck(false); //(true|false) 
+  radio.setDataRate(RF24_250KBPS); //(RF24_250KBPS|RF24_1MBPS|RF24_2MBPS) 
+  radio.setPALevel(RF24_PA_HIGH);
+  radio.startListening();
+  Serial.println(text);
+  delay(500);
+  if(radio.isChipConnected()){
+    Serial.println("CHIP CONNECTED");
+  }else{
+    Serial.println("CHIP NOT CONNECTED");
+  }
+}
+
+
+void loop() {
+  if(!radio.isChipConnected()){
+     Serial.println("CHIP NOT CONNECTED");
+  }else{
+    if (radio.available()) {
+      radio.read(&text, sizeof(text));
+      Serial.println(text);
+    }else{
+      Serial.println("..");
+    }
+    //radio.flush_rx();
+  }
+  delay(500);
+}
+
+
+#include "SPI.h" 
+#include "RF24.h" 
+#include "nRF24L01.h" 
+#define CE_PIN 9
+#define CSN_PIN 10
+// SCK => 13 
+// MOSI => 11
+// MISO => 12
+#define INTERVAL_MS_SIGNAL_LOST 1000 
+#define INTERVAL_MS_SIGNAL_RETRY 250 
+RF24 radio(CE_PIN, CSN_PIN); 
+const byte address[6] = "00001"; 
+//NRF24L01 buffer limit is 32 bytes (max struct size) 
+struct payload { 
+	 byte data1; 
+	 char data2; 
+}; 
+payload payload; 
+unsigned long lastSignalMillis = 0; 
+
+
+#define trigPin 2  
+#define echoPin 4
+#define leftSideEN 10
+#define leftSideFWD 9
+#define leftSideBWD 8
+#define rightSideEN 5
+#define rightSideFWD 7
+#define rightSideBWD 6
+#define LED 13
+#define SPEED_FACT (255/100)
+#define PROXIMITY_LIMIT 20
 
 // the setup function runs once when you press reset or power the board
 void setup() {
-  Serial.begin(9600);
+  pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(LED, OUTPUT);
+  Serial.begin(115200); 
+  
 
   pinMode(trigPin, OUTPUT);  
 	pinMode(echoPin, INPUT);  
-
-
-  pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(LED, OUTPUT);
-  delay(3000);
-
-  IrReceiver.begin(IR_RECEIVE_PIN, ENABLE_LED_FEEDBACK);
-  printActiveIRProtocols(&Serial);
   
   pinMode(leftSideEN, OUTPUT); // ENA
   pinMode(leftSideFWD, OUTPUT);
@@ -161,33 +381,21 @@ void setup() {
   pinMode(rightSideEN, OUTPUT); // ENB
 }
 
-IRCommand_t getIRCommand(void){
-  if (IrReceiver.decode()) {
-    //IrReceiver.printIRResultShort(&Serial);
-    //IrReceiver.printIRSendUsage(&Serial);
-    IrReceiver.resume(); // Enable receiving of the next value
 
-    if (IrReceiver.decodedIRData.protocol == UNKNOWN) {
-        return IRCMD_NONE;
-        // We have an unknown protocol here, print more info
-        //IrReceiver.printIRResultRawFormatted(&Serial, true);
-    }
-    if (IrReceiver.decodedIRData.command == 70) { 
-        return IRCMD_UP;
-    } else if (IrReceiver.decodedIRData.command == 21) {
-        return IRCMD_DOWN;
-    } else if (IrReceiver.decodedIRData.command == 67) {
-        return IRCMD_RIGHT;
-    } else if (IrReceiver.decodedIRData.command == 68) {
-        return IRCMD_LEFT;
-    } else if (IrReceiver.decodedIRData.command == 64) {
-        return IRCMD_OK;
-    }else{
-      Serial.print("Not supported: ");
-      Serial.println(IrReceiver.decodedIRData.command);
-        return IRCMD_NOT_SUPPORTED;
-    }
-  }
+
+typedef enum : uint8_t{
+  IRCMD_NONE,
+  IRCMD_UP,
+  IRCMD_DOWN,
+  IRCMD_RIGHT,
+  IRCMD_LEFT,
+  IRCMD_OK,
+  IRCMD_NOT_SUPPORTED
+} RemoteCommand_t;
+
+
+RemoteCommand_t getIRCommand(void){
+  
   return IRCMD_NONE;
 }
 
@@ -204,21 +412,16 @@ typedef enum : uint8_t {
 } DRIVE_STATE_t;
 
 
-float getDistance(){
-  digitalWrite(trigPin, LOW);
-  delayMicroseconds(2);
-  digitalWrite(trigPin, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(trigPin, LOW);
 
-  float duration;
-  float distance;
-  duration = pulseIn(echoPin, HIGH);
-  distance = (duration*.0343)/2;
-  //Serial.print("Distance: ");
-  //Serial.println(distance);
-  return distance;
+uint8_t convertSpeed(uint8_t speed){
+  float v = (float)SPEED_FACT * (float)speed;
+  Serial.println(v);
+  return (uint8_t)v;
 }
+
+
+
+
 
 
 // the loop function runs over and over again forever
@@ -226,7 +429,7 @@ static DRIVE_STATE_t driveState = DS_IDLE;
 uint8_t rawSpeed = 155;
 uint8_t speed = 255;
 
-void processDriveStateTransition(IRCommand_t irCMD, float distSensorValue){
+void processDriveStateTransition(RemoteCommand_t irCMD, float distSensorValue){
   if(irCMD != IRCMD_NONE){
     if(irCMD == IRCMD_UP){
         driveState = DS_FWD;
@@ -246,7 +449,7 @@ void processDriveStateTransition(IRCommand_t irCMD, float distSensorValue){
 
 }
 
-void processSpeed(float distSensorValue, IRCommand_t irCMD){
+void processSpeed(float distSensorValue, RemoteCommand_t irCMD){
    
   switch(driveState){
       case(DS_IDLE):
@@ -296,11 +499,4 @@ void processSpeed(float distSensorValue, IRCommand_t irCMD){
   }
 }
 
-void loop() {
-  float dist = getDistance();
-  IRCommand_t irCMD = getIRCommand();
-  processSpeed(dist, irCMD);
- 
-  delay(100);
-
-}
+*/
