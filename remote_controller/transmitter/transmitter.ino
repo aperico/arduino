@@ -28,6 +28,7 @@ void setup()
   radio.begin();
   radio.setDataRate(RF24_250KBPS); //(RF24_250KBPS|RF24_1MBPS|RF24_2MBPS) 
   radio.setPALevel(RF24_PA_MIN);
+  	 radio.setAutoAck(false); //(true|false) 
 
   radio.openWritingPipe(pipe);
   pinMode(button1, INPUT);
@@ -37,6 +38,7 @@ void setup()
   pinMode(button5, INPUT);
   pinMode(button6, INPUT);
   pinMode(button7, INPUT);
+  	 radio.stopListening(); 
 }
 
 void loop()   
