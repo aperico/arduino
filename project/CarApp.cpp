@@ -210,12 +210,13 @@ void CarApp::init()
 void CarApp::task()
 {
 
+  unsigned long currentTime = millis();
+  
   // if connection lost, car cannot be driven
   static unsigned long lastRadioTaskTime = 0;
-  unsigned long currentRadioTime = millis();
-  if (currentRadioTime - lastRadioTaskTime >= 15) {
+  if (currentTime - lastRadioTaskTime >= 15) {
     this->radio->task();
-    lastRadioTaskTime = currentRadioTime;
+    lastRadioTaskTime = currentTime;
   }
   
   if (!this->radio->isConnected())
@@ -225,9 +226,6 @@ void CarApp::task()
     this->driveMotorStop();
     return;
   }
-
-  
-  
 
   // print all button states
   /*Serial.print("Button 1: ");
@@ -282,14 +280,11 @@ void CarApp::task()
     this->lights->brakeLightOff();
   }
   
-
   static unsigned long lastSensorTaskTime = 0;
-  unsigned long currentSensorTime = millis();
-  if (currentSensorTime - lastSensorTaskTime >= 50) {
+  if (currentTime - lastSensorTaskTime >= 50) {
     this->distSensorFront->task();
-    lastSensorTaskTime = currentSensorTime;
+    lastSensorTaskTime = currentTime;
   }
-  
   
   const DRIVE_DIRECTION_t driveDirection = this->getDriveDirection(this->remoteCtrlData.x, this->remoteCtrlData.y);
   if (front_sensor_distance <= PROXIMITY_LIMIT)
