@@ -201,9 +201,9 @@ void CarApp::init()
 
   uint16_t *buffer = this->radio->getBufferPtr();
   // initialize buffer with zeros
-  // joystick values are 0-1023, so 127 is a good starting point
-  buffer[0] = 127;
-  buffer[1] = 127;
+  // joystick values are 0-1023, so 512 is a good starting point
+  buffer[0] = 512;
+  buffer[1] = 512;
   this->processRemoteControlBuffer(buffer);
 }
 
@@ -246,6 +246,7 @@ void CarApp::task()
 
   
   uint16_t *buffer = this->radio->getBufferPtr();
+  this->processRemoteControlBuffer(buffer);
 
   // UP = BT_2
   // RIGHT = BT_3
@@ -266,8 +267,6 @@ void CarApp::task()
     lastPrintTime = currentTime;
   }
   
-
-  this->processRemoteControlBuffer(buffer);
 
   // break if button 1 is pressed
   if (this->remoteCtrlData.bt_4 == BUTTON_PRESSED)

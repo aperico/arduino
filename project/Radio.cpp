@@ -41,6 +41,7 @@ void Radio::init()
   {
     Serial.println("CHIP NOT CONNECTED");
   }
+  this->resetBuffer();
 }
 
 void Radio::task(void)
@@ -65,7 +66,6 @@ void Radio::resetBuffer(void)
 
 void Radio::lostConnection()
 {
-
   this->resetBuffer();
   this->init();
   delay(this->INTERVAL_MS_SIGNAL_RETRY);

@@ -21,7 +21,7 @@ private:
 	const uint64_t PIPE_ID;
 
   uint16_t lastSignalMs=0;
-  const uint16_t buffer[RADIO_BUFFER_SIZE];
+  uint16_t buffer[RADIO_BUFFER_SIZE];
   const uint16_t BUFF_SIZE;
   RF24 rf24;
   const uint16_t INTERVAL_MS_SIGNAL_LOST = 2000;
