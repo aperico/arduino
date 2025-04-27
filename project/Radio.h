@@ -1,9 +1,9 @@
 #ifndef Radio_h
 #define Radio_h
 
+#include <stdint.h>
 #include <nRF24L01.h>
 #include <RF24.h>
-#include <stdint.h>
 
 #ifndef RADIO_BUFFER_SIZE
 #define RADIO_BUFFER_SIZE 9
@@ -22,9 +22,9 @@ private:
   bool connected = false;
   uint16_t lastSignalMs=0;
   const uint16_t buffer[RADIO_BUFFER_SIZE];
-  const uint16_t BUFF_SIZE = sizeof(this->buffer);
+  const uint16_t BUFF_SIZE;
   RF24 rf24;
-  const uint16_t INTERVAL_MS_SIGNAL_LOST = 1000;
+  const uint16_t INTERVAL_MS_SIGNAL_LOST = 2000;
   const uint16_t INTERVAL_MS_SIGNAL_RETRY = 1000;
 
   void resetBuffer(void);

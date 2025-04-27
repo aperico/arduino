@@ -2,7 +2,7 @@
 #include <Arduino.h>
 
 Radio::Radio(const uint64_t id, const uint8_t ce, const uint8_t csn): 
-  PIPE_ID(id), rf24(ce, csn)
+  PIPE_ID(id), rf24(ce, csn), BUFF_SIZE(sizeof(this->buffer))
 {
 
 }
@@ -53,7 +53,6 @@ void Radio::lostConnection()
 { 
   this->connected = false;
 	this->resetBuffer();
-  delay(this->INTERVAL_MS_SIGNAL_RETRY); 
   this->init();
   delay(this->INTERVAL_MS_SIGNAL_RETRY); 
 } 
