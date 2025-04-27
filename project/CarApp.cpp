@@ -1,7 +1,7 @@
 #include "CarApp.h"
 #include <Arduino.h>
 
-static const uint8_t PROXIMITY_LIMIT = 20;
+static const float PROXIMITY_LIMIT = 5.0;
 
 static const float DIAGONAL_SCALE = 0.5f;
 static const uint8_t MAX_SPEED = 255;
@@ -12,8 +12,8 @@ static const uint8_t X_MID_UPPER = (X_MID_POINT + NEUTRAL_FACTOR);
 static const uint8_t X_MID_LOWER = (X_MID_POINT - NEUTRAL_FACTOR); 
 static const uint8_t Y_MID_UPPER = (Y_MID_POINT + NEUTRAL_FACTOR); 
 static const uint8_t Y_MID_LOWER = (Y_MID_POINT - NEUTRAL_FACTOR); 
-static const uint8_t BUTTON_PRESSED = 0;
-static const uint8_t BUTTON_RELEASED = 1;
+static const uint8_t BUTTON_PRESSED = 1;
+static const uint8_t BUTTON_RELEASED = 0;
 
 CarApp::CarApp(const CartAppInitStruct_t *iff) : 
   motorRight(iff->motorRight), 
@@ -100,7 +100,6 @@ DRIVE_DIRECTION_t CarApp::getDriveDirection(const uint8_t x, const uint8_t y)
 
 void CarApp::driveMotors(const DRIVE_DIRECTION_t direction)
 {
-  Serial.println(direction);
   switch (direction)
   {
   case DRV_COAST:
@@ -141,27 +140,23 @@ void CarApp::driveMotors(const DRIVE_DIRECTION_t direction)
 
 void CarApp::driveFWD(const uint8_t speed)
 {
-  Serial.println("driveFWD");
   this->motorRight->rotateForward(speed);
   this->motorLeft->rotateForward(speed);
 }
 void CarApp::driveBWD(const uint8_t speed)
 {
-  Serial.println("driveBWD");
   this->motorRight->rotateBackward(speed);
   this->motorLeft->rotateBackward(speed);
 }
 void CarApp::driveLFT(const uint8_t speed)
 {
-  Serial.println("driveLFT");
-  this->motorLeft->rotateForward(speed);
-  this->motorRight->rotateBackward(speed);
+  this->motorLeft->rotateBackward(speed);
+  this->motorRight->rotateForward(speed);
 }
 void CarApp::driveRGT(const uint8_t speed)
 {
-  Serial.println("driveRGT");
-  this->motorLeft->rotateBackward(speed);
-  this->motorRight->rotateForward(speed);
+  this->motorLeft->rotateForward(speed);
+  this->motorRight->rotateBackward(speed);
 }
 void CarApp::driveFWD_LEFT(const uint8_t speed) {
   this->motorLeft->rotateForward(speed * DIAGONAL_SCALE);
@@ -199,22 +194,40 @@ void CarApp::init()
   this->motorLeft->init();
   this->lights->init();
   this->distSensorFront->init();
+
+  // STARTING STATE
+  this->lights->brakeLightOn();
+  this->driveMotorStop();
+
+  uint16_t *buffer = this->radio->getBufferPtr();
+  // initialize buffer with zeros
+  // joystick values are 0-1023, so 127 is a good starting point
+  buffer[0] = 127;
+  buffer[1] = 127;
+  this->processRemoteControlBuffer(buffer);
 }
+
 void CarApp::task()
 {
 
   // if connection lost, car cannot be driven
-  this->radio->task();
+  static unsigned long lastRadioTaskTime = 0;
+  unsigned long currentRadioTime = millis();
+  if (currentRadioTime - lastRadioTaskTime >= 15) {
+    this->radio->task();
+    lastRadioTaskTime = currentRadioTime;
+  }
+  
   if (!this->radio->isConnected())
   {
-    Serial.println("Radio not connected!");
+    //Serial.println("[ERROR] Radio not connected!");
+    this->lights->brakeLightOn();
     this->driveMotorStop();
     return;
   }
 
   
-  uint16_t *buffer = this->radio->getBufferPtr();
-  this->processRemoteControlBuffer(buffer);
+  
 
   // print all button states
   /*Serial.print("Button 1: ");
@@ -231,21 +244,37 @@ void CarApp::task()
   Serial.print(this->remoteCtrlData.bt_6);
   Serial.print(" Button 7: ");
   Serial.print(this->remoteCtrlData.bt_7);
-  Serial.print(" X: ");
-  Serial.print(this->remoteCtrlData.x);
-  Serial.print(" Y: ");
-  Serial.print(this->remoteCtrlData.y);*/
+  ;*/
+
+  
+  uint16_t *buffer = this->radio->getBufferPtr();
+
+  // UP = BT_2
+  // RIGHT = BT_3
+  // DOWN = BT_4
+  // LEFT = BT_5
+  
+  const float front_sensor_distance = this->distSensorFront->getDistance(); //= 2.0: ~2cm
+
+  static unsigned long lastPrintTime = 0;
+  if (currentTime - lastPrintTime >= 500) {
+    Serial.print(" X: ");
+    Serial.print(this->remoteCtrlData.x);
+    Serial.print(" Y: ");
+    Serial.print(this->remoteCtrlData.y);
+    Serial.print(" Front: ");
+    Serial.print(front_sensor_distance);
+    Serial.println();
+    lastPrintTime = currentTime;
+  }
   
 
-    // UP = BT_2
-    // RIGHT = BT_3
-    // DOWN = BT_4
-    // LEFT = BT_5
+  this->processRemoteControlBuffer(buffer);
 
   // break if button 1 is pressed
   if (this->remoteCtrlData.bt_4 == BUTTON_PRESSED)
   {
-    Serial.println("Button 4 pressed, stopping motors!");
+    //Serial.println("Button 4 pressed, stopping motors!");
     this->lights->brakeLightOn();
     this->driveMotorStop();
     return;
@@ -254,11 +283,16 @@ void CarApp::task()
   }
   
 
-  this->distSensorFront->task();
-  const float front_sensor_distance = this->distSensorFront->getDistance(); //= 2.0: ~2cm
+  static unsigned long lastSensorTaskTime = 0;
+  unsigned long currentSensorTime = millis();
+  if (currentSensorTime - lastSensorTaskTime >= 50) {
+    this->distSensorFront->task();
+    lastSensorTaskTime = currentSensorTime;
+  }
+  
   
   const DRIVE_DIRECTION_t driveDirection = this->getDriveDirection(this->remoteCtrlData.x, this->remoteCtrlData.y);
-  if (front_sensor_distance < PROXIMITY_LIMIT)
+  if (front_sensor_distance <= PROXIMITY_LIMIT)
   {
     if (driveDirection == DRV_BWD || driveDirection == DRV_LEFT || driveDirection == DRV_RIGHT)
     {
@@ -274,7 +308,6 @@ void CarApp::task()
   else
   {
     // if distance is ok, drive motors
-    Serial.println("Distance OK!");
     this->driveMotors(driveDirection);
   }
 }

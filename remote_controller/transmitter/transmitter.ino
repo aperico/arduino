@@ -25,35 +25,70 @@ void setup()
   radio.setDataRate(RF24_250KBPS); //(RF24_250KBPS|RF24_1MBPS|RF24_2MBPS)
   radio.setPALevel(RF24_PA_MIN);
   radio.setAutoAck(false); //(true|false)
+  //radio.setRetries(3, 15); // up to 3 retries, 15*250us delay between
 
   radio.openWritingPipe(pipe);
-  pinMode(button1, INPUT);
-  pinMode(button2, INPUT);
-  pinMode(button3, INPUT);
-  pinMode(button4, INPUT);
-  pinMode(button5, INPUT);
-  pinMode(button6, INPUT);
-  pinMode(button7, INPUT);
+  pinMode(button1, INPUT_PULLUP);
+  pinMode(button2, INPUT_PULLUP);
+  pinMode(button3, INPUT_PULLUP);
+  pinMode(button4, INPUT_PULLUP);
+  pinMode(button5, INPUT_PULLUP);
+  pinMode(button6, INPUT_PULLUP);
+  pinMode(button7, INPUT_PULLUP);
   radio.stopListening();
 }
 
 unsigned long lastTask = 0;
 const unsigned long interval = 10; // 10ms for fast response
 
+void readJoystick()
+{
+  data[0] = analogRead(x_axis);
+  data[1] = analogRead(y_axis);
+  data[2] = !digitalRead(button1);
+  data[3] = !digitalRead(button2);
+  data[4] = !digitalRead(button3);
+  data[5] = !digitalRead(button4);
+  data[6] = !digitalRead(button5);
+  data[7] = !digitalRead(button6);
+  data[8] = !digitalRead(button7);
+}
+
 void loop()
 {
+
+  static unsigned long lastReadTime = 0;
+  if (millis() - lastReadTime >= 100) {
+    lastReadTime = millis();
+    readJoystick();
+  }
+
+  // transmitting  
   if (millis() - lastTask >= interval)
-  {
+  {    
+    
     lastTask = millis();
     data[0] = analogRead(x_axis);
     data[1] = analogRead(y_axis);
-    data[2] = digitalRead(button1);
-    data[3] = digitalRead(button2);
-    data[4] = digitalRead(button3);
-    data[5] = digitalRead(button4);
-    data[6] = digitalRead(button5);
-    data[7] = digitalRead(button6);
-    data[8] = digitalRead(button7);
-    radio.write(data, sizeof(data));
+    data[2] = !digitalRead(button1);
+    data[3] = !digitalRead(button2);
+    data[4] = !digitalRead(button3);
+    data[5] = !digitalRead(button4);
+    data[6] = !digitalRead(button5);
+    data[7] = !digitalRead(button6);
+    data[8] = !digitalRead(button7);
+    static uint8_t failCount = 0;
+    if (!radio.write(data, sizeof(data))) {
+      Serial.println("Transmission failed");
+      failCount++;
+      if (failCount > 10) {
+        radio.begin();
+        radio.openWritingPipe(pipe);
+        radio.stopListening();
+        failCount = 0;
+      }
+    } else {
+      failCount = 0;
+    }
   }
 }

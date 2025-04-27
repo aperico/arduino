@@ -12,16 +12,17 @@ void Motor::init(){
   pinMode(this->PIN_EN, OUTPUT); 
   pinMode(this->PIN_IN1, OUTPUT);
   pinMode(this->PIN_IN2, OUTPUT);
+  this->coast();
 }
 void Motor::rotateForward(const uint8_t speed){
-  digitalWrite(this->PIN_IN1, LOW);
-  digitalWrite(this->PIN_IN2, HIGH);
+  digitalWrite(this->PIN_IN1, HIGH);
+  digitalWrite(this->PIN_IN2, LOW);
   analogWrite(this->PIN_EN, speed);
 }
 
 void Motor::rotateBackward(const uint8_t speed){
-  digitalWrite(this->PIN_IN1, HIGH);
-  digitalWrite(this->PIN_IN2, LOW);
+  digitalWrite(this->PIN_IN1, LOW);
+  digitalWrite(this->PIN_IN2, HIGH);
   analogWrite(this->PIN_EN, speed);
 }
 

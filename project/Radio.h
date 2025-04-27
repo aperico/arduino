@@ -16,10 +16,10 @@ public:
   void task(void);
   uint16_t * getBufferPtr(void);
   void lostConnection(void);
-  bool isConnected(void);
+  bool isConnected();
 private:
 	const uint64_t PIPE_ID;
-  bool connected = false;
+
   uint16_t lastSignalMs=0;
   const uint16_t buffer[RADIO_BUFFER_SIZE];
   const uint16_t BUFF_SIZE;
