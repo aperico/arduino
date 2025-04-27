@@ -1,7 +1,7 @@
 #include "CarApp.h"
 #include <Arduino.h>
 
-static const float PROXIMITY_LIMIT = 5.0;
+static const float PROXIMITY_LIMIT = 8.0;
 
 static const float DIAGONAL_SCALE = 0.5f;
 static const uint8_t MAX_SPEED = 255;
